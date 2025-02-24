@@ -73,12 +73,15 @@ class ScaleCalculationMode(Enum):
            It uses X = 2^ceil(log2(max_abs(v))-max_exp).
     EVEN: This method is a trade-off between Option 1 and Option 2. It uses X = 2^(floor(log2(rounding(max_abs(v)))-max_exp)).
            It provides better accuracy for MX4 training compared to FLOOR and CEIL.
+    NVIDIA_CEIL: X = 2^ceil(log2(max_abs(v) / dtype_max))
     By default, we use the EVEN method for better accuracy.
     """
 
     FLOOR = auto()
     CEIL = auto()
     EVEN = auto()
+    # TODO: Find a better name for this.
+    NVIDIA_CEIL = auto()
 
 
 def to_mx(
@@ -120,18 +123,23 @@ def to_mx(
     # max_abs(v), divided by the largest power of two representable
     # in the element data type, and get the mbits at the same time
     if elem_dtype == torch.float8_e4m3fn:
+        target_max = F8E4M3_MAX
         target_max_pow2 = F8E4M3_MAX_POW2
         mbits = MBITS_F8_E4M3
     elif elem_dtype == torch.float8_e5m2:
+        target_max = F8E5M2_MAX
         target_max_pow2 = F8E5M2_MAX_POW2
         mbits = MBITS_F8_E5M2
     elif elem_dtype == DTYPE_FP6_E2M3:
+        target_max = F6_E2M3_MAX
         target_max_pow2 = F6_E2M3_MAX_POW2
         mbits = MBITS_F6_E2M3
     elif elem_dtype == DTYPE_FP6_E3M2:
+        target_max = F6_E3M2_MAX
         target_max_pow2 = F6_E3M2_MAX_POW2
         mbits = MBITS_F6_E3M2
     elif elem_dtype == DTYPE_FP4:
+        target_max = F4_E2M1_MAX
         target_max_pow2 = F4_E2M1_MAX_POW2
         mbits = MBITS_F4_E2M1
     else:
@@ -153,6 +161,8 @@ def to_mx(
         scale_e8m0_unbiased = torch.floor(torch.log2(max_abs + eps)) - target_max_pow2
     elif scaling_mode == ScaleCalculationMode.CEIL:
         scale_e8m0_unbiased = torch.ceil(torch.log2(max_abs + eps)) - target_max_pow2
+    elif scaling_mode == ScaleCalculationMode.NVIDIA_CEIL:
+        scale_e8m0_unbiased = torch.ceil(torch.log2((max_abs + eps) / target_max))
     else:
         raise AssertionError("unsupported scaling calculation mode")
 

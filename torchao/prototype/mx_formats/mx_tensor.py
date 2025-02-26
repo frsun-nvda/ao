@@ -84,11 +84,16 @@ class ScaleCalculationMode(Enum):
     NVIDIA_CEIL = auto()
 
 
+class DefaultScaleCalculationMode:
+    """A hacky class allows interception from the outside."""
+    default = ScaleCalculationMode.NVIDIA_CEIL
+
+
 def to_mx(
     data_hp: torch.Tensor,
     elem_dtype: Union[torch.dtype, str],
     block_size: int,
-    scaling_mode: ScaleCalculationMode = ScaleCalculationMode.FLOOR,
+    scaling_mode: ScaleCalculationMode = DefaultScaleCalculationMode.default,
 ):
     """
     Takes a high precision tensor and converts to MX scale and raw data, in
@@ -480,10 +485,11 @@ class MXTensor(torch.Tensor):
         data_hp: torch.Tensor,
         elem_dtype: Union[torch.dtype, str],
         block_size: int = BLOCK_SIZE_DEFAULT,
-        scaling_mode: ScaleCalculationMode = ScaleCalculationMode.FLOOR,
+        scaling_mode: ScaleCalculationMode = DefaultScaleCalculationMode.default,
         use_fp4_custom_triton_dequant_kernel: bool = False,
         gemm_kernel_choice: MXGemmKernelChoice = MXGemmKernelChoice.EMULATED,
     ):
+        scaling_mode = DefaultScaleCalculationMode.default
         return ToMXConstrFunc.apply(
             data_hp,
             elem_dtype,

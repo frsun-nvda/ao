@@ -82,6 +82,7 @@ class ScaleCalculationMode(Enum):
     EVEN = auto()
     # TODO: Find a better name for this.
     NVIDIA_CEIL = auto()
+    NVIDIA_FLOOR = auto()
 
 
 class DefaultScaleCalculationMode:
@@ -166,6 +167,8 @@ def to_mx(
         scale_e8m0_unbiased = torch.floor(torch.log2(max_abs + eps)) - target_max_pow2
     elif scaling_mode == ScaleCalculationMode.CEIL:
         scale_e8m0_unbiased = torch.ceil(torch.log2(max_abs + eps)) - target_max_pow2
+    elif scaling_mode == ScaleCalculationMode.NVIDIA_FLOOR:
+        scale_e8m0_unbiased = torch.floor(torch.log2((max_abs + eps) / target_max))
     elif scaling_mode == ScaleCalculationMode.NVIDIA_CEIL:
         scale_e8m0_unbiased = torch.ceil(torch.log2((max_abs + eps) / target_max))
     else:

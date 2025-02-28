@@ -63,6 +63,46 @@ EBITS_F8_E4M3, MBITS_F8_E4M3 = 4, 3
 EBITS_F8_E5M2, MBITS_F8_E5M2 = 5, 2
 
 
+
+from typing import Tuple
+
+import torch
+
+E4M3_INVERSE_MAX = 1.0 / 448.0
+FP32_MANTISSA_BITS = 23
+FP32_EXPONENT_BIAS = 127
+
+
+def float_to_mxfp8(input: torch.Tensor, block_size: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    assert input.dtype in (torch.float32, torch.bfloat16)
+    reshaped_input = input.reshape(-1, block_size)
+    blocked_amax = torch.amax(torch.abs(reshaped_input), 1, keepdim=False)
+
+    descale = blocked_amax * E4M3_INVERSE_MAX
+
+    nan_mask = torch.isnan(descale)
+    inf_mask = torch.isinf(descale)
+    zero_mask = descale == 0.0
+
+    descale_int32 = descale.view(torch.int32)
+    exponent = (descale_int32 >> FP32_MANTISSA_BITS).to(torch.uint8)
+    mantissa = (descale_int32 & 0x7FFFFF)
+    exponent[
+        ((mantissa > 0) & (exponent != 0xFE)) & ((exponent != 0) | (mantissa > 0x400000))
+    ] += 1
+    exponent[nan_mask] = 0xFF
+    exponent[inf_mask] = 0xFE
+    exponent[zero_mask] = 0
+
+    two_tensor = torch.full_like(exponent, 2.0, dtype=torch.float32)
+    quant_scale = torch.pow(two_tensor, torch.tensor([FP32_EXPONENT_BIAS], dtype=torch.float32) - exponent)
+    quant_scale[exponent == 0] = 1
+    shaped_scale = quant_scale.unsqueeze(1)
+
+    output = (reshaped_input * shaped_scale).to(torch.float8_e4m3fn)
+    return exponent, output.reshape(input.shape)
+
+
 class ScaleCalculationMode(Enum):
     """
     Enum representing the different methods for calculating MX block scaling.
@@ -109,6 +149,9 @@ def to_mx(
     assert data_hp.numel() % block_size == 0, "unsupported"
     assert data_hp.is_contiguous(), "unsupported"
     assert elem_dtype in SUPPORTED_ELEM_DTYPES, "unsupported"
+
+    if scaling_mode == ScaleCalculationMode.NVIDIA_CEIL:
+        return float_to_mxfp8(data_hp, block_size)
 
     # calculate the scale in e8m0 format
 

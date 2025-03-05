@@ -126,12 +126,17 @@ def _to_mx_nvidia(
     return exponent, data_lp
 
 
+class DefaultScaleCalculationMode:
+    default = ScaleCalculationMode.EVEN
+
+
 def to_mx(
     data_hp: torch.Tensor,
     elem_dtype: Union[torch.dtype, str],
     block_size: int,
     scaling_mode: ScaleCalculationMode = ScaleCalculationMode.FLOOR,
 ):
+    print(scaling_mode)
     """
     Takes a high precision tensor and converts to MX scale and raw data, in
     naive layout (scale and raw data are separate tensors).
@@ -524,6 +529,8 @@ class MXTensor(torch.Tensor):
         use_fp4_custom_triton_dequant_kernel: bool = False,
         gemm_kernel_choice: MXGemmKernelChoice = MXGemmKernelChoice.EMULATED,
     ):
+        scaling_mode = DefaultScaleCalculationMode.default
+        print(scaling_mode)
         return ToMXConstrFunc.apply(
             data_hp,
             elem_dtype,

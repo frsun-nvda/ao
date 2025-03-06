@@ -136,7 +136,6 @@ def to_mx(
     block_size: int,
     scaling_mode: ScaleCalculationMode = ScaleCalculationMode.FLOOR,
 ):
-    print(scaling_mode)
     """
     Takes a high precision tensor and converts to MX scale and raw data, in
     naive layout (scale and raw data are separate tensors).
@@ -530,7 +529,6 @@ class MXTensor(torch.Tensor):
         gemm_kernel_choice: MXGemmKernelChoice = MXGemmKernelChoice.EMULATED,
     ):
         scaling_mode = DefaultScaleCalculationMode.default
-        print(scaling_mode)
         return ToMXConstrFunc.apply(
             data_hp,
             elem_dtype,

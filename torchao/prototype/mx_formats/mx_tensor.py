@@ -82,6 +82,7 @@ class ScaleCalculationMode(Enum):
     CEIL = auto()
     EVEN = auto()
     CUBLAS_CEIL = auto()
+    DS_V3 = auto()
 
 
 def _to_mx_nvidia(
@@ -124,6 +125,35 @@ def _to_mx_nvidia(
         data_hp * descale_fp.unsqueeze(1), min=-1 * max_pos, max=max_pos
     )
     return exponent, data_lp
+
+
+def _to_mx_ds_v3(
+    data_hp: torch.Tensor,
+    max_abs: torch.Tensor,
+    max_pos: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    A prototype implementation of MXFP scale factor derivation method described in
+    https://docs.nvidia.com/cuda/cublas/#d-block-quantization
+
+    Args:
+        data_hp: High precision data.
+        max_abs: Maximum absolute value for data_hp along specified dimension/block_size.
+        max_pos: The maximum value of the low precision data type.
+
+    Returns:
+        exponent: The biased exponent with dtype E8M0 in uint8 container.
+        data_lp: The targeted low precision data, in high precision container
+            (requires cast to low precision data type).
+    """
+    descale = (max_abs / max_pos).to(torch.float32)
+
+    descale_fp = descale
+    # scale and saturated cast the data elements to max of target dtype
+    data_lp = torch.clamp(
+        data_hp * descale_fp.unsqueeze(1), min=-1 * max_pos, max=max_pos
+    )
+    return descale, data_lp
 
 
 def to_mx(
@@ -189,6 +219,8 @@ def to_mx(
 
     if scaling_mode == ScaleCalculationMode.CUBLAS_CEIL:
         scale_e8m0_biased, data_lp = _to_mx_nvidia(data_hp, max_abs, max_pos)
+    elif scaling_mode == ScaleCalculationMode.DS_V3:
+        scale_e8m0_biased, data_lp = _to_mx_ds_v3(data_hp, max_abs, max_pos)
     else:
         # rounding before calculating the largest power of 2
         # X = 2^(floor(log2(rounding(max_abs(v)))-max_exp))
@@ -339,7 +371,10 @@ def to_dtype(
         raise AssertionError("unsupported")
 
     data_hp = data_hp.reshape(-1, block_size)
-    s_fp = get_fp_scale(scale_e8m0).reshape(-1, 1).to(target_dtype)
+    if scale_e8m0.dtype == torch.float32:
+        s_fp = scale_e8m0
+    else:
+        s_fp = get_fp_scale(scale_e8m0).reshape(-1, 1).to(target_dtype)
     data_hp = data_hp * s_fp
     data_hp = data_hp.reshape(orig_shape)
 

@@ -85,6 +85,10 @@ class ScaleCalculationMode(Enum):
     DS_V3 = auto()
 
 
+class DefaultScaleCalculationMode:
+    default = ScaleCalculationMode.EVEN
+
+
 def _to_mx_nvidia(
     data_hp: torch.Tensor,
     max_abs: torch.Tensor,
@@ -419,6 +423,7 @@ class ToMXConstrFunc(torch.autograd.Function):
         use_fp4_custom_triton_dequant_kernel,
         gemm_kernel_choice,
     ):
+        scaling_mode = DefaultScaleCalculationMode.default
         scale_e8m0_biased, data_lp = to_mx(
             data_hp, elem_dtype, block_size, scaling_mode
         )
@@ -559,6 +564,7 @@ class MXTensor(torch.Tensor):
         use_fp4_custom_triton_dequant_kernel: bool = False,
         gemm_kernel_choice: MXGemmKernelChoice = MXGemmKernelChoice.EMULATED,
     ):
+        scaling_mode = DefaultScaleCalculationMode.default
         return ToMXConstrFunc.apply(
             data_hp,
             elem_dtype,

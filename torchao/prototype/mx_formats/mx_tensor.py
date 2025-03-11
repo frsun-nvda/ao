@@ -82,7 +82,7 @@ class ScaleCalculationMode(Enum):
     CEIL = auto()
     EVEN = auto()
     CUBLAS_CEIL = auto()
-    DS_V3 = auto()
+    CUBLAS_CEIL_FLOAT_SCALE = auto()
 
 
 class DefaultScaleCalculationMode:
@@ -131,7 +131,7 @@ def _to_mx_nvidia(
     return exponent, data_lp
 
 
-def _to_mx_ds_v3(
+def _to_mx_nvidia_float_scale(
     data_hp: torch.Tensor,
     max_abs: torch.Tensor,
     max_pos: float,
@@ -152,7 +152,7 @@ def _to_mx_ds_v3(
     """
     descale = (max_abs / max_pos).to(torch.float32)
 
-    descale_fp = descale
+    descale_fp = 1.0 / descale
     # scale and saturated cast the data elements to max of target dtype
     data_lp = torch.clamp(
         data_hp * descale_fp.unsqueeze(1), min=-1 * max_pos, max=max_pos
@@ -223,8 +223,8 @@ def to_mx(
 
     if scaling_mode == ScaleCalculationMode.CUBLAS_CEIL:
         scale_e8m0_biased, data_lp = _to_mx_nvidia(data_hp, max_abs, max_pos)
-    elif scaling_mode == ScaleCalculationMode.DS_V3:
-        scale_e8m0_biased, data_lp = _to_mx_ds_v3(data_hp, max_abs, max_pos)
+    elif scaling_mode == ScaleCalculationMode.CUBLAS_CEIL_FLOAT_SCALE:
+        scale_e8m0_biased, data_lp = _to_mx_nvidia_float_scale(data_hp, max_abs, max_pos)
     else:
         # rounding before calculating the largest power of 2
         # X = 2^(floor(log2(rounding(max_abs(v)))-max_exp))
@@ -376,7 +376,7 @@ def to_dtype(
 
     data_hp = data_hp.reshape(-1, block_size)
     if scale_e8m0.dtype == torch.float32:
-        s_fp = scale_e8m0
+        s_fp = scale_e8m0.reshape(-1, 1).to(target_dtype)
     else:
         s_fp = get_fp_scale(scale_e8m0).reshape(-1, 1).to(target_dtype)
     data_hp = data_hp * s_fp
@@ -495,7 +495,7 @@ class MXTensor(torch.Tensor):
             dtype=orig_dtype,
             device=data_bits.device,
         )
-        assert scale_e8m0_bits.dtype == torch.uint8, "unsupported"
+        # assert scale_e8m0_bits.dtype == torch.uint8, "unsupported"
         assert len(scale_e8m0_bits.shape) == 1, "unsupported"
         assert data_bits.dtype in (
             torch.float8_e4m3fn,
